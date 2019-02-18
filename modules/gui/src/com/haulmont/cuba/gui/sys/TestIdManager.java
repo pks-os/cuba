@@ -21,9 +21,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
-import static com.google.common.hash.Hashing.goodFastHash;
+import static com.google.common.hash.Hashing.*;
 
 public class TestIdManager {
+
+    protected static final int SEED = Integer.MAX_VALUE;
 
     protected Map<String, Integer> ids = new HashMap<>();
 
@@ -47,7 +49,7 @@ public class TestIdManager {
             id = id + number;
         }
 
-        return goodFastHash(128).hashString(id, StandardCharsets.UTF_8).toString();
+        return murmur3_128(SEED).hashString(id, StandardCharsets.UTF_8).toString();
     }
 
     public String reserveId(String id) {
@@ -55,7 +57,7 @@ public class TestIdManager {
             ids.put(id, 0);
         }
 
-        return goodFastHash(128).hashString(id, StandardCharsets.UTF_8).toString();
+        return murmur3_128(SEED).hashString(id, StandardCharsets.UTF_8).toString();
     }
 
     public String normalize(String id) {

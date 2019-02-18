@@ -169,16 +169,17 @@ public abstract class WebAbstractComponent<T extends com.vaadin.ui.Component>
             return;
         }
 
-        if (this.component != null && ui.isPerformanceTestMode()) {
-            if (frame == null || StringUtils.isEmpty(frame.getId())) {
-                return;
-            }
+        if (this.component == null
+                || frame == null
+                || StringUtils.isEmpty(frame.getId())) {
+            return;
+        }
 
+        if (ui.isPerformanceTestMode()) {
+            String fullFrameId = ComponentsHelper.getFullFrameId(frame);
             TestIdManager testIdManager = ui.getTestIdManager();
 
-            String fullFrameId = ComponentsHelper.getFullFrameId(frame);
-
-            String candidateId = fullFrameId + "." + id;
+            String candidateId = fullFrameId + "." + getAlternativeDebugId();
             if (getDebugId() != null) {
                 String postfix = StringUtils.replace(getDebugId(), testIdManager.normalize(candidateId), "");
                 if (StringUtils.isEmpty(postfix) || NumberUtils.isDigits(postfix)) {
@@ -189,6 +190,17 @@ public abstract class WebAbstractComponent<T extends com.vaadin.ui.Component>
 
             setDebugId(testIdManager.getTestId(candidateId));
         }
+    }
+
+    /**
+     * @return id that is suitable for auto debug id
+     */
+    protected String getAlternativeDebugId() {
+        if (id != null) {
+            return id;
+        }
+
+        return getClass().getSimpleName();
     }
 
     @Override
