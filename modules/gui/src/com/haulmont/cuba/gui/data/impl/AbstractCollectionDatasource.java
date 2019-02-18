@@ -17,11 +17,11 @@
 
 package com.haulmont.cuba.gui.data.impl;
 
-import com.google.common.base.Joiner;
-import com.haulmont.chile.core.model.*;
+import com.haulmont.chile.core.model.Instance;
+import com.haulmont.chile.core.model.MetaClass;
+import com.haulmont.chile.core.model.MetaProperty;
+import com.haulmont.chile.core.model.MetaPropertyPath;
 import com.haulmont.chile.core.model.utils.InstanceUtils;
-import com.haulmont.cuba.client.sys.PersistenceManagerClient;
-import com.haulmont.cuba.core.app.PersistenceManagerService;
 import com.haulmont.cuba.core.entity.Entity;
 import com.haulmont.cuba.core.global.*;
 import com.haulmont.cuba.core.global.filter.ParameterInfo;
@@ -31,14 +31,15 @@ import com.haulmont.cuba.gui.ComponentsHelper;
 import com.haulmont.cuba.gui.FrameContext;
 import com.haulmont.cuba.gui.components.Frame;
 import com.haulmont.cuba.gui.components.HasValue;
-import com.haulmont.cuba.gui.data.*;
+import com.haulmont.cuba.gui.data.CollectionDatasource;
+import com.haulmont.cuba.gui.data.DataSupplier;
+import com.haulmont.cuba.gui.data.Datasource;
 import com.haulmont.cuba.security.global.UserSession;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.Nullable;
 import java.util.*;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
@@ -51,7 +52,7 @@ import java.util.regex.Pattern;
 public abstract class AbstractCollectionDatasource<T extends Entity<K>, K>
         extends DatasourceImpl<T>
         implements CollectionDatasource<T, K>,
-                   CollectionDatasource.SupportsRefreshMode<T, K> {
+        CollectionDatasource.SupportsRefreshMode<T, K> {
 
     protected String query;
     protected QueryFilter filter;
@@ -65,7 +66,7 @@ public abstract class AbstractCollectionDatasource<T extends Entity<K>, K>
     protected Map<String, Object> savedParameters;
     protected Throwable dataLoadError;
     protected boolean listenersSuspended;
-    protected final LinkedList<CollectionChangeEvent<T,K>> suspendedEvents = new LinkedList<>();
+    protected final LinkedList<CollectionChangeEvent<T, K>> suspendedEvents = new LinkedList<>();
     protected RefreshMode refreshMode = RefreshMode.ALWAYS;
     protected UserSession userSession = AppBeans.<UserSessionSource>get(UserSessionSource.NAME).getUserSession();
 
@@ -89,7 +90,7 @@ public abstract class AbstractCollectionDatasource<T extends Entity<K>, K>
                 if (item != null) {
                     final MetaClass aClass = item.getMetaClass();
                     if (!aClass.equals(this.metaClass) && !this.metaClass.getDescendants().contains(aClass)) {
-                        throw new DevelopmentException(String.format("Invalid item metaClass '%s'",  aClass));
+                        throw new DevelopmentException(String.format("Invalid item metaClass '%s'", aClass));
                     }
                 }
                 this.item = item;
@@ -262,7 +263,7 @@ public abstract class AbstractCollectionDatasource<T extends Entity<K>, K>
                             value = makeCaseInsensitive((String) value);
                         }
                         if (java.sql.Date.class.equals(info.getJavaClass()) && value instanceof Date) {
-                            value = new java.sql.Date(((Date)value).getTime());
+                            value = new java.sql.Date(((Date) value).getTime());
                         }
                         if (refreshOnComponentValueChange) {
                             if (componentValueListener == null)
@@ -420,8 +421,8 @@ public abstract class AbstractCollectionDatasource<T extends Entity<K>, K>
     public void resumeListeners() {
         listenersSuspended = false;
 
-        while(!suspendedEvents.isEmpty()) {
-            CollectionChangeEvent<T,K> suspendedEvent = suspendedEvents.removeLast();
+        while (!suspendedEvents.isEmpty()) {
+            CollectionChangeEvent<T, K> suspendedEvent = suspendedEvents.removeLast();
             fireCollectionChanged(suspendedEvent.getOperation(), Collections.unmodifiableList(suspendedEvent.getItems()));
         }
     }
@@ -435,7 +436,7 @@ public abstract class AbstractCollectionDatasource<T extends Entity<K>, K>
     public void unmute(UnmuteEventsMode mode) {
         listenersSuspended = false;
 
-        if (mode ==  UnmuteEventsMode.FIRE_REFRESH_EVENT) {
+        if (mode == UnmuteEventsMode.FIRE_REFRESH_EVENT) {
             fireCollectionChanged(Operation.REFRESH, Collections.emptyList());
         }
     }
@@ -620,79 +621,11 @@ public abstract class AbstractCollectionDatasource<T extends Entity<K>, K>
     }
 
     protected void setSortDirection(LoadContext.Query q) {
-        boolean asc = Sortable.Order.ASC.equals(sortInfos[0].getOrder());
         MetaPropertyPath propertyPath = sortInfos[0].getPropertyPath();
-        String[] sortProperties = null;
+        Sort.Direction direction = Sortable.Order.ASC.equals(sortInfos[0].getOrder()) ?
+                Sort.Direction.ASC : Sort.Direction.DESC;
 
-        if (metadata.getTools().isPersistent(propertyPath)) {
-            sortProperties = getSortPropertiesForPersistentAttribute(propertyPath);
-        } else {
-            // a non-persistent attribute
-            List<String> relProperties = metadata.getTools().getRelatedProperties(propertyPath.getMetaProperty());
-            if (!relProperties.isEmpty()) {
-                List<String> sortPropertiesList = new ArrayList<>(relProperties.size());
-                for (String relProp : relProperties) {
-                    String[] ppCopy = Arrays.copyOf(propertyPath.getPath(), propertyPath.getPath().length);
-                    ppCopy[ppCopy.length - 1] = relProp;
-
-                    MetaPropertyPath relPropertyPath = propertyPath.getMetaProperties()[0].getDomain().getPropertyPath(Joiner.on(".").join(ppCopy));
-                    String[] sortPropertiesForRelProperty = getSortPropertiesForPersistentAttribute(relPropertyPath);
-                    if (sortPropertiesForRelProperty != null)
-                        Collections.addAll(sortPropertiesList, sortPropertiesForRelProperty);
-                }
-                if (!sortPropertiesList.isEmpty())
-                    sortProperties = sortPropertiesList.toArray(new String[sortPropertiesList.size()]);
-            }
-        }
-
-        if (sortProperties != null && sortProperties.length != 0) {
-            QueryTransformer transformer = QueryTransformerFactory.createTransformer(q.getQueryString());
-            transformer.replaceOrderBy(!asc, sortProperties);
-            String jpqlQuery = transformer.getResult();
-            q.setQueryString(jpqlQuery);
-        }
-    }
-
-    @Nullable
-    protected String[] getSortPropertiesForPersistentAttribute(MetaPropertyPath propertyPath) {
-        String[] sortProperties = null;
-        MetaProperty metaProperty = propertyPath.getMetaProperty();
-        Range range = metaProperty.getRange();
-
-        PersistenceManagerService persistenceManagerService = AppBeans.get(PersistenceManagerClient.NAME);
-        if (!range.isClass()) {
-            // a scalar persistent attribute
-            MetaClass propertyMetaClass = metadata.getTools().getPropertyEnclosingMetaClass(propertyPath);
-            String storeName = metadata.getTools().getStoreName(propertyMetaClass);
-            if (!metadata.getTools().isLob(metaProperty)
-                    || persistenceManagerService.supportsLobSortingAndFiltering(storeName)) {
-                sortProperties = new String[1];
-                sortProperties[0] = propertyPath.toString();
-            }
-        } else {
-            // a reference attribute
-            if (!range.getCardinality().isMany()) {
-                Collection<MetaProperty> properties = metadata.getTools().getNamePatternProperties(range.asClass());
-                if (!properties.isEmpty()) {
-                    sortProperties = properties.stream()
-                            .filter(prop -> {
-                                if (metadata.getTools().isPersistent(prop)) {
-                                    String storeName = metadata.getTools().getStoreName(range.asClass());
-                                    return !metadata.getTools().isLob(prop) ||
-                                            persistenceManagerService.supportsLobSortingAndFiltering(storeName);
-                                }
-                                return false;
-                            })
-                            .map(MetadataObject::getName)
-                            .map(propName -> propertyPath.toString().concat(".").concat(propName))
-                            .toArray(String[]::new);
-                } else {
-                    sortProperties = new String[1];
-                    sortProperties[0] = propertyPath.toString();
-                }
-            }
-        }
-        return sortProperties;
+        q.setSort(Sort.by(direction, propertyPath.toString()));
     }
 
     @Override
