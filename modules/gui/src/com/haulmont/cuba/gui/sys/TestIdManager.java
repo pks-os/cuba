@@ -25,7 +25,8 @@ import static com.google.common.hash.Hashing.*;
 
 public class TestIdManager {
 
-    protected static final int SEED = Integer.MAX_VALUE;
+    // Caution! Magic number
+    protected static final int SEED = 970501011;
 
     protected Map<String, Integer> ids = new HashMap<>();
 
