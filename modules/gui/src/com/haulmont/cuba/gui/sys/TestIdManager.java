@@ -17,18 +17,15 @@
 
 package com.haulmont.cuba.gui.sys;
 
-import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
-
-import static com.google.common.hash.Hashing.*;
+import java.util.regex.Pattern;
 
 public class TestIdManager {
 
-    // Caution! Magic number
-    protected static final int SEED = 970501011;
-
     protected Map<String, Integer> ids = new HashMap<>();
+
+    protected Pattern wrongCharacters = Pattern.compile("[^a-zA-Z\\d]");
 
     public String getTestId(String baseId) {
         String id = normalize(baseId);
@@ -50,7 +47,7 @@ public class TestIdManager {
             id = id + number;
         }
 
-        return murmur3_128(SEED).hashString(id, StandardCharsets.UTF_8).toString();
+        return id;
     }
 
     public String reserveId(String id) {
@@ -58,12 +55,16 @@ public class TestIdManager {
             ids.put(id, 0);
         }
 
-        return murmur3_128(SEED).hashString(id, StandardCharsets.UTF_8).toString();
+        return id;
     }
 
     public String normalize(String id) {
         if (id != null) {
-            return id.replaceAll("[^\\p{L}\\p{Nd}]", "_");
+            if (id.length() > 32) {
+                id = id.substring(0, 32);
+            }
+
+            return wrongCharacters.matcher(id).replaceAll("_");
         }
         return null;
     }
