@@ -26,6 +26,7 @@ public class TestIdManager {
     protected Map<String, Integer> ids = new HashMap<>();
 
     protected Pattern wrongCharacters = Pattern.compile("[^a-zA-Z\\d]");
+    protected static final String PREFIX = "id_";
 
     public String getTestId(String baseId) {
         String id = normalize(baseId);
@@ -64,7 +65,12 @@ public class TestIdManager {
                 id = id.substring(0, 32);
             }
 
-            return wrongCharacters.matcher(id).replaceAll("_");
+            id = wrongCharacters.matcher(id).replaceAll("_");
+            if (id.length() < 2) {
+                return PREFIX + id;
+            }
+
+            return id;
         }
         return null;
     }
