@@ -22,6 +22,7 @@ import com.haulmont.cuba.client.sys.cache.ClientCacheManager;
 import com.haulmont.cuba.client.sys.cache.DynamicAttributesCacheStrategy;
 import com.haulmont.cuba.core.app.dynamicattributes.DynamicAttributesCacheService;
 import com.haulmont.cuba.core.entity.Category;
+import com.haulmont.cuba.core.entity.CategoryAttribute;
 import com.haulmont.cuba.core.global.MessageTools;
 import com.haulmont.cuba.core.global.Metadata;
 import com.haulmont.cuba.gui.WindowManager.OpenType;
@@ -32,6 +33,7 @@ import com.haulmont.cuba.gui.components.actions.RemoveAction;
 import com.haulmont.cuba.gui.config.PermissionConfig;
 import com.haulmont.cuba.gui.data.CollectionDatasource;
 import com.haulmont.cuba.gui.xml.layout.ComponentsFactory;
+import org.apache.commons.lang.BooleanUtils;
 
 import javax.inject.Inject;
 import java.util.Map;
@@ -63,6 +65,9 @@ public class CategoryBrowser extends AbstractLookup {
     @Inject
     protected ComponentsFactory componentsFactory;
 
+    @Inject
+    protected Table<CategoryAttribute> attributesTable;
+
     @Override
     public void init(Map<String, Object> params) {
         categoryTable.addAction(new CreateAction());
@@ -86,6 +91,8 @@ public class CategoryBrowser extends AbstractLookup {
             dataTypeLabel.setValue(messageTools.getEntityCaption(meta));
             return dataTypeLabel;
         });
+
+        initAttrDataTypeColumn();
     }
 
     protected class CreateAction extends AbstractAction {
@@ -133,5 +140,31 @@ public class CategoryBrowser extends AbstractLookup {
                 });
             }
         }
+    }
+
+    protected void initAttrDataTypeColumn() {
+        attributesTable.removeGeneratedColumn("dataType");
+        attributesTable.addGeneratedColumn("dataType", new Table.ColumnGenerator<CategoryAttribute>() {
+            @Override
+            public Component generateCell(CategoryAttribute attribute) {
+                Label dataTypeLabel = componentsFactory.createComponent(Label.class);
+                String labelContent;
+                if (BooleanUtils.isTrue(attribute.getIsEntity())) {
+                    Class clazz = attribute.getJavaClassForEntity();
+
+                    if (clazz != null) {
+                        MetaClass metaClass = metadata.getSession().getClass(clazz);
+                        labelContent = messageTools.getEntityCaption(metaClass);
+                    } else {
+                        labelContent = "classNotFound";
+                    }
+                } else {
+                    labelContent = getMessage(attribute.getDataType().name());
+                }
+
+                dataTypeLabel.setValue(labelContent);
+                return dataTypeLabel;
+            }
+        });
     }
 }
