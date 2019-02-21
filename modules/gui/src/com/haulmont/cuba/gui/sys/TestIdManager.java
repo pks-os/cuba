@@ -25,7 +25,7 @@ public class TestIdManager {
 
     protected Map<String, Integer> ids = new HashMap<>();
 
-    protected Pattern wrongCharacters = Pattern.compile("[^a-zA-Z\\d]");
+    protected static final Pattern WRONG_CHARACTERS = Pattern.compile("[^a-zA-Z\\d_]");
     protected static final String PREFIX = "id_";
 
     public String getTestId(String baseId) {
@@ -52,6 +52,7 @@ public class TestIdManager {
     }
 
     public String reserveId(String id) {
+        id = normalize(id);
         if (!ids.containsKey(id)) {
             ids.put(id, 0);
         }
@@ -65,7 +66,7 @@ public class TestIdManager {
                 id = id.substring(0, 32);
             }
 
-            id = wrongCharacters.matcher(id).replaceAll("_");
+            id = WRONG_CHARACTERS.matcher(id).replaceAll("_");
             if (id.length() < 2) {
                 return PREFIX + id;
             }
