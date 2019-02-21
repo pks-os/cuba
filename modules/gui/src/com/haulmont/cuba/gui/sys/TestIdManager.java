@@ -19,13 +19,14 @@ package com.haulmont.cuba.gui.sys;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class TestIdManager {
 
     protected Map<String, Integer> ids = new HashMap<>();
 
-    protected static final Pattern WRONG_CHARACTERS = Pattern.compile("[^a-zA-Z\\d_]");
+    protected static final Pattern PERMITTED_CHARACTERS = Pattern.compile("[a-zA-Z\\d_]");
     protected static final String PREFIX = "id_";
 
     public String getTestId(String baseId) {
@@ -52,26 +53,39 @@ public class TestIdManager {
     }
 
     public String reserveId(String id) {
-        id = normalize(id);
-        if (!ids.containsKey(id)) {
-            ids.put(id, 0);
+        String normalizedId = normalize(id);
+        if (!ids.containsKey(normalizedId)) {
+            ids.put(normalizedId, 0);
         }
 
-        return id;
+        return normalizedId;
     }
 
     public String normalize(String id) {
         if (id != null) {
+            String normalizedId = id;
             if (id.length() > 32) {
-                id = id.substring(0, 32);
+                normalizedId = id.substring(0, 32);
             }
 
-            id = WRONG_CHARACTERS.matcher(id).replaceAll("_");
-            if (id.length() < 2) {
-                return PREFIX + id;
+            Matcher matcher = PERMITTED_CHARACTERS.matcher(normalizedId);
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < normalizedId.length(); i++) {
+                if (matcher.find(i)) {
+                    if (i != matcher.start()) {
+                        sb.append("_");
+                    } else {
+                        sb.append(matcher.group());
+                    }
+                }
             }
 
-            return id;
+            String result = sb.toString();
+            if (result.length() < 2) {
+                return PREFIX + result;
+            }
+
+            return result;
         }
         return null;
     }
