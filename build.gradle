@@ -390,6 +390,7 @@ configure(coreModule) {
 
         testCompile(coreTestsModule)
         testCompile(bom['org.hsqldb:hsqldb'])
+        testCompile(bom['org.springframework:spring-test'])
 
         testCompile(bom['org.codehaus.groovy:groovy-json'])
     }
@@ -422,12 +423,12 @@ configure(coreModule) {
         }
     }
 
-    task testJoinedComposition(type: Test) {
+    /*task testJoinedComposition(type: Test) {
         scanForTestClasses = false
         includes = ['spec/cuba/core/composition/joined_composition/JoinedCompositionTestClass.class']
-    }
+    }*/
 
-    test.finalizedBy testJoinedComposition
+    /*test.finalizedBy testJoinedComposition*/
 
     assembleDbScripts {
         moduleAlias = '10-cuba'
