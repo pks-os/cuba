@@ -44,6 +44,7 @@ import org.apache.commons.lang3.reflect.MethodUtils;
 import org.dom4j.Element;
 import org.perf4j.StopWatch;
 import org.perf4j.slf4j.Slf4JStopWatch;
+import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
@@ -62,6 +63,7 @@ import static com.haulmont.cuba.gui.screen.UiControllerUtils.getScreenContext;
 public class MenuItemCommands {
 
     private static final org.slf4j.Logger userActionsLog = LoggerFactory.getLogger(UserActionsLogger.class);
+    private static final Logger log = LoggerFactory.getLogger(MenuItemCommands.class);
 
     @Inject
     protected DataService dataService;
@@ -227,7 +229,8 @@ public class MenuItemCommands {
             } else if (Integer.class.equals(pkType)) {
                 id = Integer.valueOf(entityId);
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            log.debug("Failed to parse entity id: '{}'", entityId, e);
         }
 
         return id;
@@ -329,40 +332,6 @@ public class MenuItemCommands {
             }
 
             sw.stop();
-        }
-
-        protected void setEntityFromProps(Window.Editor editor) {
-            UiControllerProperty entityToEditProp = properties.stream()
-                    .filter(prop -> "entityToEdit".equals(prop.getName()))
-                    .findFirst()
-                    .orElse(null);
-
-            if (entityToEditProp == null) {
-                return;
-            }
-
-            Method entityToEditSetter = uiControllerReflectionInspector.getPropertySetters(editor.getClass())
-                    .stream()
-                    .filter(m -> "setEntityToEdit".equals(m.getName()))
-                    .findFirst()
-                    .orElse(null);
-
-            if (entityToEditSetter == null) {
-                return;
-            }
-
-            Object entityToEdit = entityToEditProp.getValue();
-
-            boolean suitableType = entityToEditSetter.getParameterTypes()[0]
-                    .isAssignableFrom(entityToEdit.getClass());
-
-            if (!suitableType) {
-                throw new RuntimeException(String.format("Unable to set '%s' as entity to edit for '%s'",
-                        entityToEdit, editor));
-            }
-
-            //noinspection unchecked
-            editor.setEntityToEdit((Entity) entityToEdit);
         }
 
         @Override
