@@ -177,15 +177,12 @@ public abstract class WebAbstractComponent<T extends com.vaadin.ui.Component>
             return;
         }
 
-        if (ui.isPerformanceTestMode()) {
+        if (ui.isPerformanceTestMode() && getDebugId() == null) {
             String fullFrameId = ComponentsHelper.getFullFrameId(frame);
             TestIdManager testIdManager = ui.getTestIdManager();
 
             String alternativeId = id != null ? id : getClass().getSimpleName();
             String candidateId = fullFrameId + "." + alternativeId;
-            if (getDebugId() != null) {
-                return;
-            }
 
             setDebugId(testIdManager.getTestId(candidateId));
         }
