@@ -27,7 +27,9 @@ public class TestIdManager {
     protected Map<String, Integer> ids = new HashMap<>();
 
     protected static final Pattern PERMITTED_CHARACTERS = Pattern.compile("[a-zA-Z\\d_]");
+
     protected static final String PREFIX = "id_";
+    protected static final String DIVIDER = "&";
 
     public String getTestId(String baseId) {
         String id = normalize(baseId);
@@ -38,15 +40,16 @@ public class TestIdManager {
         } else {
             number++;
         }
+
         ids.put(id, number);
 
         // prevent conflicts
-        while (ids.containsKey(id + number)) {
+        while (ids.containsKey(id + "_" + number)) {
             number++;
         }
 
         if (number > 0) {
-            id = id + number;
+            id = id + DIVIDER + number;
         }
 
         return id;
@@ -63,25 +66,23 @@ public class TestIdManager {
 
     public String normalize(String id) {
         if (id != null) {
-            String normalizedId = id;
-            if (id.length() > 32) {
-                normalizedId = id.substring(0, 32);
-            }
-
-            Matcher matcher = PERMITTED_CHARACTERS.matcher(normalizedId);
+            Matcher matcher = PERMITTED_CHARACTERS.matcher(id);
             StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < normalizedId.length(); i++) {
+            for (int i = 0; i < id.length(); i++) {
                 if (matcher.find(i)) {
                     if (i != matcher.start()) {
                         sb.append("_");
                     } else {
                         sb.append(matcher.group());
                     }
+                } else {
+                    // add last non permitted chars
+                    sb.append("_");
                 }
             }
 
             String result = sb.toString();
-            if (result.length() < 2) {
+            if (result.length() <= 2) {
                 return PREFIX + result;
             }
 
