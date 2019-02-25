@@ -17,8 +17,12 @@
 package com.haulmont.cuba.gui.config;
 
 import com.google.common.collect.ImmutableMap;
+import com.haulmont.bali.util.ReflectionHelper;
+import com.haulmont.chile.core.model.MetaClass;
+import com.haulmont.chile.core.model.MetaProperty;
 import com.haulmont.cuba.core.app.DataService;
 import com.haulmont.cuba.core.entity.Entity;
+import com.haulmont.cuba.core.entity.IdProxy;
 import com.haulmont.cuba.core.global.*;
 import com.haulmont.cuba.core.sys.AppContext;
 import com.haulmont.cuba.core.sys.BeanLocatorAware;
@@ -32,8 +36,9 @@ import com.haulmont.cuba.gui.screen.FrameOwner;
 import com.haulmont.cuba.gui.screen.MapScreenOptions;
 import com.haulmont.cuba.gui.screen.OpenMode;
 import com.haulmont.cuba.gui.screen.Screen;
-import com.haulmont.cuba.gui.sys.UiControllerPropertyInjector;
 import com.haulmont.cuba.gui.sys.UiControllerProperty;
+import com.haulmont.cuba.gui.sys.UiControllerPropertyInjector;
+import com.haulmont.cuba.gui.sys.UiControllerReflectionInspector;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.reflect.MethodUtils;
 import org.dom4j.Element;
@@ -42,15 +47,12 @@ import org.perf4j.slf4j.Slf4JStopWatch;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.function.Consumer;
 
 import static com.haulmont.cuba.gui.screen.UiControllerUtils.getScreenContext;
@@ -73,6 +75,8 @@ public class MenuItemCommands {
 
     @Inject
     protected BeanLocator beanLocator;
+    @Inject
+    protected UiControllerReflectionInspector uiControllerReflectionInspector;
 
     /**
      * Create menu command.
@@ -150,20 +154,105 @@ public class MenuItemCommands {
         List<UiControllerProperty> properties = new ArrayList<>(propElements.size());
 
         for (Element property : propElements) {
-            String name = property.attributeValue("name");
-            if (StringUtils.isEmpty(name)) {
-                throw new IllegalStateException("Screen property cannot have empty name");
+            UiControllerProperty valueProperty = loadValueProperty(property);
+            UiControllerProperty entityProperty = loadEntityToEdit(property);
+
+            if (valueProperty != null
+                    && entityProperty != null) {
+                throw new IllegalStateException("Controller property cannot have a value and an entity at the same time");
             }
 
-            String value = property.attributeValue("value");
-            if (StringUtils.isEmpty(value)) {
-                throw new IllegalStateException("Screen property cannot have empty value");
+            if (valueProperty != null) {
+                properties.add(valueProperty);
+            } else if (entityProperty != null) {
+                properties.add(entityProperty);
+            } else {
+                throw new IllegalArgumentException("Controller property should have either value or entity");
             }
-
-            properties.add(new UiControllerProperty(name, value, UiControllerProperty.Type.VALUE));
         }
 
         return properties;
+    }
+
+    @Nullable
+    protected UiControllerProperty loadValueProperty(Element propertyElement) {
+        String name = propertyElement.attributeValue("name");
+        if (StringUtils.isEmpty(name)) {
+            return null;
+        }
+
+        String value = propertyElement.attributeValue("value");
+        if (StringUtils.isEmpty(value)) {
+            throw new IllegalStateException("Screen property cannot have empty value");
+        }
+        return new UiControllerProperty(name, value, UiControllerProperty.Type.VALUE);
+    }
+
+    @Nullable
+    protected UiControllerProperty loadEntityToEdit(Element propertyElement) {
+        String entityClass = propertyElement.attributeValue("entityClass");
+        if (StringUtils.isEmpty(entityClass)) {
+            return null;
+        }
+
+        String entityId = propertyElement.attributeValue("entityId");
+        if (StringUtils.isEmpty(entityId)) {
+            throw new IllegalStateException("Screen entity property must have entity id");
+        }
+
+        MetaClass metaClass = metadata.getClassNN(ReflectionHelper.getClass(entityClass));
+
+        Object id = parseEntityId(metaClass, entityId);
+        if (id == null) {
+            throw new RuntimeException(String.format("Unable to parse id value `%s` for entity '%s'",
+                    entityId, entityClass));
+        }
+
+        LoadContext ctx = new LoadContext(metaClass)
+                .setId(id);
+
+        String entityView = propertyElement.attributeValue("entityView");
+        if (StringUtils.isNotEmpty(entityView)) {
+            ctx.setView(entityView);
+        }
+
+        //noinspection unchecked
+        Entity entity = dataService.load(ctx);
+        if (entity == null) {
+            throw new RuntimeException(String.format("Unable to load entity of class '%s' with id '%s'",
+                    entityClass, entityId));
+        }
+
+        return new UiControllerProperty("entityToEdit", entity, UiControllerProperty.Type.REFERENCE);
+    }
+
+    @Nullable
+    protected Object parseEntityId(MetaClass entityMetaClass, String entityId) {
+        MetaProperty pkProperty = metadata.getTools().getPrimaryKeyProperty(entityMetaClass);
+        if (pkProperty == null) {
+            return null;
+        }
+
+        Class<?> pkType = pkProperty.getJavaType();
+
+        if (String.class.equals(pkType)) {
+            return entityId;
+        } else if (UUID.class.equals(pkType)) {
+            return UUID.fromString(entityId);
+        }
+
+        Object id = null;
+
+        try {
+            if (Long.class.equals(pkType) || IdProxy.class.equals(pkType)) {
+                id = Long.valueOf(entityId);
+            } else if (Integer.class.equals(pkType)) {
+                id = Integer.valueOf(entityId);
+            }
+        } catch (Exception ignored) {
+        }
+
+        return id;
     }
 
     protected Entity loadEntityInstance(EntityLoadInfo info) {
@@ -244,8 +333,9 @@ public class MenuItemCommands {
                 }
 
                 WindowInfo windowInfo = windowConfig.getWindowInfo(this.screen);
-                ((WindowManager) screens).openEditor(windowInfo, entityItem, openType, params);
+                Window.Editor editor = ((WindowManager) screens).openEditor(windowInfo, entityItem, openType, params);
 
+                setEntityFromProps(editor);
             } else {
                 Screen screen = screens.create(screenId, openType.getOpenMode(), new MapScreenOptions(params));
 
@@ -258,6 +348,40 @@ public class MenuItemCommands {
             }
 
             sw.stop();
+        }
+
+        protected void setEntityFromProps(Window.Editor editor) {
+            UiControllerProperty entityToEditProp = properties.stream()
+                    .filter(prop -> "entityToEdit".equals(prop.getName()))
+                    .findFirst()
+                    .orElse(null);
+
+            if (entityToEditProp == null) {
+                return;
+            }
+
+            Method entityToEditSetter = uiControllerReflectionInspector.getPropertySetters(editor.getClass())
+                    .stream()
+                    .filter(m -> "setEntityToEdit".equals(m.getName()))
+                    .findFirst()
+                    .orElse(null);
+
+            if (entityToEditSetter == null) {
+                return;
+            }
+
+            Object entityToEdit = entityToEditProp.getValue();
+
+            boolean suitableType = entityToEditSetter.getParameterTypes()[0]
+                    .isAssignableFrom(entityToEdit.getClass());
+
+            if (!suitableType) {
+                throw new RuntimeException(String.format("Unable to set '%s' as entity to edit for '%s'",
+                        entityToEdit, editor));
+            }
+
+            //noinspection unchecked
+            editor.setEntityToEdit((Entity) entityToEdit);
         }
 
         @Override
