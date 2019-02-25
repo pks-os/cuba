@@ -67,12 +67,6 @@ public class UiControllerPropertyInjector {
     public void inject() {
         for (UiControllerProperty property : properties) {
             String propName = property.getName();
-
-            if ("entityToEdit".equals(propName)) {
-                // no need to handle it here
-                continue;
-            }
-
             Method setter = findSuitableSetter(propName);
             if (setter == null) {
                 log.info("Unable to find suitable setter for property '{}'. Its value will not be injected into '{}'",
@@ -80,13 +74,17 @@ public class UiControllerPropertyInjector {
                 continue;
             }
 
-            Class<?> propType = setter.getParameterTypes()[0];
-            Object value = parseParamValue(property, propType);
+            Object value = property.getValue();
 
-            if (value == null) {
-                log.info("Unable to parse '{}' as '{}' for property '{}'. It will not be injected into '{}'",
-                        property.getValue(), propType, propName, frameOwner);
-                continue;
+            if (value instanceof String) {
+                Class<?> propType = setter.getParameterTypes()[0];
+                value = parseParamValue(property, propType);
+
+                if (value == null) {
+                    log.info("Unable to parse '{}' as '{}' for property '{}'. It will not be injected into '{}'",
+                            property.getValue(), propType, propName, frameOwner);
+                    continue;
+                }
             }
 
             try {

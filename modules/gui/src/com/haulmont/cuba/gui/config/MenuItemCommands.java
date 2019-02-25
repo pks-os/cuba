@@ -54,6 +54,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.*;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 import static com.haulmont.cuba.gui.screen.UiControllerUtils.getScreenContext;
 
@@ -151,53 +152,30 @@ public class MenuItemCommands {
             return Collections.emptyList();
         }
 
-        List<UiControllerProperty> properties = new ArrayList<>(propElements.size());
-
-        for (Element property : propElements) {
-            UiControllerProperty valueProperty = loadValueProperty(property);
-            UiControllerProperty entityProperty = loadEntityToEdit(property);
-
-            if (valueProperty != null
-                    && entityProperty != null) {
-                throw new IllegalStateException("Controller property cannot have a value and an entity at the same time");
-            }
-
-            if (valueProperty != null) {
-                properties.add(valueProperty);
-            } else if (entityProperty != null) {
-                properties.add(entityProperty);
-            } else {
-                throw new IllegalArgumentException("Controller property should have either value or entity");
-            }
-        }
-
-        return properties;
+        return propElements.stream()
+                .map(this::loadUiControllerProperty)
+                .collect(Collectors.toList());
     }
 
-    @Nullable
-    protected UiControllerProperty loadValueProperty(Element propertyElement) {
-        String name = propertyElement.attributeValue("name");
-        if (StringUtils.isEmpty(name)) {
-            return null;
+    protected UiControllerProperty loadUiControllerProperty(Element propertyElement) {
+        String propertyName = propertyElement.attributeValue("name");
+        if (StringUtils.isEmpty(propertyName)) {
+            throw new IllegalStateException("Screen property cannot have empty name");
         }
 
-        String value = propertyElement.attributeValue("value");
-        if (StringUtils.isEmpty(value)) {
-            throw new IllegalStateException("Screen property cannot have empty value");
+        String propertyValue = propertyElement.attributeValue("value");
+        if (StringUtils.isNotEmpty(propertyValue)) {
+            return new UiControllerProperty(propertyName, propertyValue, UiControllerProperty.Type.VALUE);
         }
-        return new UiControllerProperty(name, value, UiControllerProperty.Type.VALUE);
-    }
 
-    @Nullable
-    protected UiControllerProperty loadEntityToEdit(Element propertyElement) {
         String entityClass = propertyElement.attributeValue("entityClass");
         if (StringUtils.isEmpty(entityClass)) {
-            return null;
+            throw new IllegalStateException(String.format("Screen property '%s' has neither value nor entity load info", propertyName));
         }
 
         String entityId = propertyElement.attributeValue("entityId");
         if (StringUtils.isEmpty(entityId)) {
-            throw new IllegalStateException("Screen entity property must have entity id");
+            throw new IllegalStateException(String.format("Screen entity property '%s' doesn't have entity id", propertyName));
         }
 
         MetaClass metaClass = metadata.getClassNN(ReflectionHelper.getClass(entityClass));
@@ -223,7 +201,7 @@ public class MenuItemCommands {
                     entityClass, entityId));
         }
 
-        return new UiControllerProperty("entityToEdit", entity, UiControllerProperty.Type.REFERENCE);
+        return new UiControllerProperty(propertyName, entity, UiControllerProperty.Type.REFERENCE);
     }
 
     @Nullable
@@ -335,7 +313,10 @@ public class MenuItemCommands {
                 WindowInfo windowInfo = windowConfig.getWindowInfo(this.screen);
                 Window.Editor editor = ((WindowManager) screens).openEditor(windowInfo, entityItem, openType, params);
 
-                setEntityFromProps(editor);
+                // inject declarative properties
+                UiControllerPropertyInjector propertyInjector = beanLocator.getPrototype(UiControllerPropertyInjector.NAME,
+                        editor, properties);
+                propertyInjector.inject();
             } else {
                 Screen screen = screens.create(screenId, openType.getOpenMode(), new MapScreenOptions(params));
 
