@@ -36,7 +36,6 @@ import com.haulmont.cuba.gui.screen.FrameOwner;
 import com.haulmont.cuba.gui.screen.MapScreenOptions;
 import com.haulmont.cuba.gui.screen.OpenMode;
 import com.haulmont.cuba.gui.screen.Screen;
-import com.haulmont.cuba.gui.screen.compatibility.LegacyFrame;
 import com.haulmont.cuba.gui.sys.UiControllerProperty;
 import com.haulmont.cuba.gui.sys.UiControllerPropertyInjector;
 import org.apache.commons.lang3.StringUtils;
@@ -286,68 +285,64 @@ public class MenuItemCommands {
                 }
             }
 
-            String screenId = this.screen;
-
             Screens screens = getScreenContext(origin).getScreens();
+
+            String screenId = this.screen;
+            Screen screen;
 
             if (screenId.endsWith(Window.CREATE_WINDOW_SUFFIX)
                     || screenId.endsWith(Window.EDITOR_WINDOW_SUFFIX)) {
-                // only for legacy screens
 
-                Entity entityItem;
-                if (params.containsKey("item")) {
-                    entityItem = (Entity) params.get("item");
-                } else {
-                    Object entityToEdit = properties.stream()
-                            .filter(prop -> "entityToEdit".equals(prop.getName()))
-                            .findFirst()
-                            .map(UiControllerProperty::getValue)
-                            .orElse(null);
-
-                    if (entityToEdit instanceof Entity) {
-                        entityItem = (Entity) entityToEdit;
-                    } else {
-                        String[] strings = screenId.split("[.]");
-                        String metaClassName;
-                        if (strings.length == 2) {
-                            metaClassName = strings[0];
-                        } else if (strings.length == 3) {
-                            metaClassName = strings[1];
-                        } else {
-                            throw new UnsupportedOperationException("Incorrect screen parameters in menu item " + item.getId());
-                        }
-
-                        entityItem = metadata.create(metaClassName);
-                    }
-                }
-
-                Screen screen;
                 WindowInfo windowInfo = windowConfig.getWindowInfo(this.screen);
-
-                if (LegacyFrame.class.isAssignableFrom(windowInfo.getControllerClass())) {
-                    screen = ((WindowManager) screens).createEditor(windowInfo, entityItem, openType, params);
+                if (windowInfo.getDescriptor() != null) {
+                    // legacy editor
+                    screen = ((WindowManager) screens).createEditor(windowInfo, getEntityToEdit(screenId), openType, params);
                 } else {
                     screen = screens.create(screenId, openType.getOpenMode(), new MapScreenOptions(params));
                 }
-
-                // inject declarative properties
-                UiControllerPropertyInjector propertyInjector = beanLocator.getPrototype(UiControllerPropertyInjector.NAME,
-                        screen, properties);
-                propertyInjector.inject();
-
-                screens.showFromNavigation(screen);
             } else {
-                Screen screen = screens.create(screenId, openType.getOpenMode(), new MapScreenOptions(params));
-
-                // inject declarative properties
-                UiControllerPropertyInjector propertyInjector = beanLocator.getPrototype(UiControllerPropertyInjector.NAME,
-                        screen, properties);
-                propertyInjector.inject();
-
-                screens.showFromNavigation(screen);
+                screen = screens.create(screenId, openType.getOpenMode(), new MapScreenOptions(params));
             }
 
+            // inject declarative properties
+            UiControllerPropertyInjector propertyInjector = beanLocator.getPrototype(UiControllerPropertyInjector.NAME,
+                    screen, properties);
+            propertyInjector.inject();
+
+            screens.showFromNavigation(screen);
+
             sw.stop();
+        }
+
+        protected Entity getEntityToEdit(String screenId) {
+            Entity entityItem;
+
+            if (params.containsKey("item")) {
+                entityItem = (Entity) params.get("item");
+            } else {
+                Object entityToEdit = properties.stream()
+                        .filter(prop -> "entityToEdit".equals(prop.getName()))
+                        .findFirst()
+                        .map(UiControllerProperty::getValue)
+                        .orElse(null);
+
+                if (entityToEdit instanceof Entity) {
+                    entityItem = (Entity) entityToEdit;
+                } else {
+                    String[] strings = screenId.split("[.]");
+                    String metaClassName;
+                    if (strings.length == 2) {
+                        metaClassName = strings[0];
+                    } else if (strings.length == 3) {
+                        metaClassName = strings[1];
+                    } else {
+                        throw new UnsupportedOperationException("Incorrect screen parameters in menu item " + item.getId());
+                    }
+
+                    entityItem = metadata.create(metaClassName);
+                }
+            }
+            return entityItem;
         }
 
         @Override
