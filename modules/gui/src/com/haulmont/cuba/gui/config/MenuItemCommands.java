@@ -289,11 +289,10 @@ public class MenuItemCommands {
 
             String screenId = this.screen;
             Screen screen;
+            WindowInfo windowInfo = windowConfig.getWindowInfo(this.screen);
 
             if (screenId.endsWith(Window.CREATE_WINDOW_SUFFIX)
                     || screenId.endsWith(Window.EDITOR_WINDOW_SUFFIX)) {
-
-                WindowInfo windowInfo = windowConfig.getWindowInfo(this.screen);
                 if (windowInfo.getDescriptor() != null) {
                     // legacy editor
                     screen = ((WindowManager) screens).createEditor(windowInfo, getEntityToEdit(screenId), openType, params);
@@ -305,6 +304,14 @@ public class MenuItemCommands {
             }
 
             // inject declarative properties
+
+            List<UiControllerProperty> properties = this.properties;
+            if (windowInfo.getDescriptor() != null) {
+                properties = properties.stream()
+                        .filter(prop -> !"entityToEdit".equals(prop.getName()))
+                        .collect(Collectors.toList());
+            }
+
             UiControllerPropertyInjector propertyInjector = beanLocator.getPrototype(UiControllerPropertyInjector.NAME,
                     screen, properties);
             propertyInjector.inject();
